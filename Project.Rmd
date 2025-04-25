@@ -8,6 +8,8 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(stringr)
+library(ggplot2)
 ```
 
 ## Investigating the Internet Movie Database (IMDB)
@@ -30,6 +32,59 @@ The [Internet Movie Database (IMDb)]() contains information on millions of movie
 
 ## Part II: EDA of individual tables
 
+```{r}
+name_basics <- read_rds("data/name_basics_sample.rda")
+title_basics <- read_rds("data/title_basics_sample.rda")
+title_principals <- read_rds("data/title_principals_sample.rda")
+title_ratings <- read_rds("data/title_ratings_sample.rda")
+```
+
+```{r}
+summary(name_basics)
+
+
+name_basics %>% summarise(unique_primaryName = n_distinct(primaryName))
+
+name_basics$primaryProfession <- as.factor(name_basics$primaryProfession)
+summary(name_basics$primaryProfession)
+
+name_basics$numKnownForTitles <- sapply(str_split(name_basics$knownForTitles, ","), length)
+summary(as.factor(name_basics$numKnownForTitles))
+
+current_year <- 2025
+name_basics <- name_basics %>%
+  mutate(
+    age = ifelse(is.na(deathYear), current_year - birthYear, deathYear - birthYear),
+    is_alive = ifelse(is.na(deathYear), "Living", "Deceased"))
+
+name_basics %>%
+  filter(str_detect(primaryName, "^(Tom|Thomas|Thom|Tomas)\\b")) %>%
+  count()
+
+# Plot: Distribution of Birth Years
+ggplot(name_basics, aes(x = birthYear)) +
+  geom_histogram(bins = 50, fill = "blue", color = "black") +
+  labs(title = "Distribution of Birth Years", x = "Birth Year", y = "Frequency")
+
+# Plot: Age Distribution of Deceased Cast Member
+ggplot(name_basics %>% filter(is_alive == "Deceased"), aes(x = age)) +
+  geom_histogram(fill = "blue", bins = 30) +
+  theme_minimal() +
+  labs(title = "Age Distribution of Deceased Cast Members")
+
+# Plot: Age Distribution of Living Cast Member
+ggplot(name_basics %>% filter(is_alive == "Living"), aes(x = age)) +
+  geom_histogram(fill = "green", bins = 30) +
+  theme_minimal() +
+  labs(title = "Age Distribution of Living Cast Members")
+
+# Plot: Number of Titles Known for
+ggplot(name_basics, aes(x = numKnownForTitles)) +
+  geom_bar(fill = "green") +
+  labs(title = "Number of Titles Known for Each Person", x = "Number of Titles", y = "Frequency")
+```
+
+
 * For each of the 4 tables, perform basic exploratory data analysis. Report the following information:
   * For each quantitative column, provide some summary statistics
   * For any character columns, decided if they are actually representing factors/categorical data with a moderate number of columns. If so report the distributions for these variables.
@@ -47,6 +102,8 @@ The [Internet Movie Database (IMDb)]() contains information on millions of movie
       * Do the same for living cast members.
 * Find all the actors with first names "Tom", "Thomas", "Thom" or "Tomas". How many are there?
 * How many titles use alliteration (i.e., all words in the title start with the same letter)?
+
+**There are 4331 actors with the first name "Tom", "Thomas", "Thom" or "Tomas"**
 
 ## Part III: Pivoting
 

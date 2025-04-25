@@ -1,0 +1,34 @@
+---
+title: "IMDb Preprocessing"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readr)
+library(dplyr)
+```
+
+```{r}
+preprocess <- function(file_name) {
+  file_path <- paste0(file_name, ".csv.gz")
+  data <- read_csv(file_path, na = "\\N", show_col_types = FALSE)
+  return(data)
+}
+
+datasets <- c("name_basics_sample", "title_basics_sample", "title_principals_sample", "title_ratings_sample")
+
+for (file in datasets) {
+  data <- preprocess(file)
+    problems <- problems(data)
+  
+  if(nrow(problems) > 0) {
+    print(paste("Problems in file:", file))
+    print(problems)
+  } else {
+    print(paste("No problems in file:", file))
+  }
+  write_rds(data, paste0(file, ".rda"))
+
+}
+```

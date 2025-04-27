@@ -147,6 +147,74 @@ ggplot(title_basics, aes(x = runtimeMinutes, fill = titleType)) +
 * Using that table, create a line plot of the count different genres over time (you may limit this to the most common genres if you wish).
 * Use the `model.matrix` function in the following way: `model.matrix(yourtalltable, ~ genre - 1)` to create a wide table with one column for each genre. Use this table to find the most common pair of genres (hint: use the `cor` function or produce facet plots)
 
+```{r}
+library(tidyverse)
+
+# ──────────────────────────────────────
+# 1. Build a “long” table: one row per (title, genre)
+# ──────────────────────────────────────
+titles_genre_long <- title_basics %>% 
+  filter(genres != "\\N") %>%           # drop missing genre strings
+  separate_rows(genres, sep = ",")      # split "Drama,Romance" → two rows
+
+# ──────────────────────────────────────
+# 2. Line plot of genre counts over time (top 8 genres)
+# ──────────────────────────────────────
+genre_year_counts <- titles_genre_long %>% 
+  count(startYear, genres, name = "n")
+
+top_genres <- titles_genre_long %>%               # the 8 most frequent genres
+  count(genres, sort = TRUE) %>% 
+  slice_head(n = 8) %>% 
+  pull(genres)
+
+ggplot(filter(genre_year_counts, genres %in% top_genres),
+       aes(startYear, n, colour = genres)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Title counts by genre over time",
+       x = "Release year",
+       y = "Number of titles",
+       colour = "Genre") +
+  scale_x_continuous(breaks = seq(1920, 2025, 10)) +
+  theme_minimal()
+
+# ──────────────────────────────────────
+# 3. Create a 0/1 dummy (wide) table for genres
+# ──────────────────────────────────────
+genre_dummy <- titles_genre_long %>% 
+  distinct(tconst, genres) %>%          # ensure one row per (title, genre)
+  mutate(flag = 1L) %>% 
+  pivot_wider(
+    names_from   = genres,
+    values_from  = flag,
+    values_fill  = 0L,
+    values_fn    = max,                 # combine duplicated rows safely
+    names_repair = "minimal"
+  )
+
+# ──────────────────────────────────────
+# 4. Most common genre pairs (top 10)  –  FIXED
+# ──────────────────────────────────────
+G_mat  <- as.matrix(select(genre_dummy, -tconst))   # numeric 0/1 matrix
+co_mat <- crossprod(G_mat)                          # genre × genre co-occurrence
+
+pair_counts <- as.data.frame(as.table(co_mat),     # Var1 / Var2 are factors
+                             stringsAsFactors = FALSE) %>%  # <-- make them character
+  filter(Var1 != Var2) %>%                         # drop the diagonal
+  arrange(desc(Freq)) %>% 
+  slice_head(n = 10) %>% 
+  transmute(
+    genre_pair = paste(Var1, Var2, sep = " & "),
+    count      = Freq
+  )
+
+print(pair_counts)
+
+```
+
+
+
+
 ## Part IV: Joining Tables
 
 * Join the table with one title-genre per row from the previous section with the ratings table.
@@ -159,6 +227,205 @@ ggplot(title_basics, aes(x = runtimeMinutes, fill = titleType)) +
   * Graph ratings against years. What trends do you see?
 * Create a table with one row for each person in the `name_basics` table and title they are known for. Join this to the ratings table to get the ratings of the "known for" films. Find the person (or people) who have the highest median known for rating.
 * 
+```{r}
+
+library(tidyverse)
+
+#──────────────────────────────────────
+# A. Rating statistics by genre
+#──────────────────────────────────────
+genre_ratings <- titles_genre_long %>% 
+  inner_join(title_ratings, by = "tconst")
+
+genre_summary <- genre_ratings %>% 
+  group_by(genres) %>% 
+  summarise(
+    avg_rating = mean(averageRating, na.rm = TRUE),
+    med_rating = median(averageRating, na.rm = TRUE),
+    n_titles   = n(),
+    .groups    = "drop"
+  )
+
+highest_rated <- genre_summary %>% slice_max(avg_rating, n = 1)
+lowest_rated  <- genre_summary %>% slice_min(avg_rating, n = 1)
+
+# show in document
+highest_rated
+lowest_rated
+
+#──────────────────────────────────────
+# Stacked bar: genre proportions by decade
+#──────────────────────────────────────
+genre_ratings %>% 
+  mutate(decade = cut(startYear,
+                      breaks = seq(1920, 2030, 10),
+                      right  = FALSE,
+                      labels = paste0(seq(1920, 2020, 10), "s"))) %>% 
+  count(decade, genres) %>% 
+  group_by(decade) %>% 
+  mutate(prop = n / sum(n)) %>% 
+  ungroup() %>% 
+  ggplot(aes(decade, prop, fill = fct_lump(genres, 10))) +
+  geom_col() +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Genre proportions by decade",
+       x = "Decade",
+       y = "Proportion",
+       fill = "Genre (top 9 + Other)") +
+  theme_minimal()
+```
+```{r}
+
+cat(
+  "Highest-rated genre:", highest_rated$genres,
+  "-- average rating =", round(highest_rated$avg_rating, 2), "\n",
+  "Lowest-rated genre:",  lowest_rated$genres,
+  "-- average rating =", round(lowest_rated$avg_rating, 2)
+)
+
+```
+
+```{r}
+#──────────────────────────────────────
+# B. Votes vs. release year
+#──────────────────────────────────────
+title_rt <- title_basics %>% 
+  inner_join(title_ratings, by = "tconst")
+
+votes_by_year <- title_rt %>% 
+  group_by(startYear) %>% 
+  summarise(
+    mean_votes   = mean(numVotes),
+    median_votes = median(numVotes),
+    n_titles     = n(),
+    .groups      = "drop"
+  )
+
+ggplot(votes_by_year, aes(startYear, mean_votes)) +
+  geom_line() +
+  labs(title = "Average number of votes vs. release year",
+       x = "Release year",
+       y = "Mean numVotes") +
+  theme_minimal()
+```
+```{r}
+# change from first to last year with data
+v_change <- votes_by_year %>%
+  filter(!is.na(mean_votes)) %>%
+  summarise(
+    first_year = startYear[which.min(startYear)],
+    last_year  = startYear[which.max(startYear)],
+    delta      = mean_votes[which.max(startYear)] -
+                 mean_votes[which.min(startYear)]
+  )
+
+cat(
+  "Between", v_change$first_year, "and", v_change$last_year, 
+  "the average number of votes per title changed by",
+  round(v_change$delta, 1), 
+  ifelse(v_change$delta > 0, "(increase).", "(decrease).")
+)
+```
+
+```{r}
+#──────────────────────────────────────
+# C. Top-10 principals by median rating
+#──────────────────────────────────────
+# ── 1. Build people_ratings (fast, only required cols) ────────────────
+people_ratings <- title_principals %>% 
+  select(tconst, nconst) %>% 
+  inner_join(title_ratings %>% select(tconst, averageRating),  # ratings
+             by = "tconst") %>% 
+  inner_join(title_basics  %>% select(tconst, startYear),      # year
+             by = "tconst", relationship = "many-to-many") %>% 
+  inner_join(name_basics   %>% select(nconst, primaryName),    # names
+             by = "nconst")
+
+# 2. Top-10 principals by median rating (≥ 3 titles)
+top10_people <- people_ratings %>% 
+  group_by(nconst, primaryName) %>% 
+  summarise(
+    med_rating = median(averageRating),
+    n_titles   = n(),
+    .groups    = "drop"
+  ) %>% 
+  filter(n_titles >= 3) %>% 
+  slice_max(med_rating, n = 10)
+
+top10_people   # table output
+
+# 3. Genre mix for the top-10 principals
+top10_mix <- people_ratings %>% 
+  semi_join(top10_people, by = "nconst") %>% 
+  inner_join(titles_genre_long, by = "tconst", relationship = "many-to-many") %>% 
+  count(primaryName, genres) %>% 
+  group_by(primaryName) %>% 
+  mutate(prop = n / sum(n)) %>% 
+  ungroup()
+
+top5_mix <- top10_mix %>% 
+  group_by(primaryName) %>% 
+  slice_max(prop, n = 5) %>% 
+  ungroup()
+
+p_mix <- ggplot(top5_mix,
+                aes(fct_reorder(genres, prop), prop, fill = genres)) +
+  geom_col(width = 0.75, show.legend = FALSE) +
+  geom_text(aes(label = scales::percent(prop, accuracy = 0.1)),
+            hjust = -0.05, size = 3) +
+  facet_wrap(~ primaryName, scales = "free_y", ncol = 2) +
+  coord_flip(clip = "off") +
+  scale_y_continuous(labels = scales::percent,
+                     expand = expansion(mult = c(0, 0.15))) +
+  labs(title = "Top 5 genres for each of the 10 highest-rated principals",
+       x = NULL, y = "Proportion") +
+  theme_minimal(base_size = 9) +
+  theme(
+    strip.text  = element_text(face = "bold", size = 10),
+    axis.text.y = element_text(size = 8),
+    plot.title  = element_text(face = "bold", size = 11,
+                               margin = margin(b = 8))
+  )
+
+print(p_mix)
+
+# ── 4. Rating trend over time (scatter + loess) ──────────────────────
+rating_trend <- people_ratings %>% 
+  group_by(startYear) %>% 
+  summarise(mean_rating = mean(averageRating), .groups = "drop")
+
+p_trend <- ggplot(rating_trend, aes(startYear, mean_rating)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Average rating trend over time",
+       x = "Release year", y = "Average rating") +
+  theme_minimal()
+
+print(p_trend)       # ensure plot appears
+```
+
+```{r}
+#──────────────────────────────────────
+# D. “Known-for” median ratings
+#──────────────────────────────────────
+knownfor_long <- name_basics %>% 
+  select(nconst, knownForTitles) %>% 
+  separate_rows(knownForTitles, sep = ",") %>% 
+  rename(tconst = knownForTitles) %>% 
+  inner_join(title_ratings, by = "tconst")
+
+best_knownfor <- knownfor_long %>% 
+  group_by(nconst) %>% 
+  summarise(
+    med_knownfor = median(averageRating),
+    .groups      = "drop"
+  ) %>% 
+  slice_max(med_knownfor, n = 1) %>% 
+  inner_join(name_basics, by = "nconst") %>% 
+  select(primaryName, med_knownfor)
+
+best_knownfor
+
+```
 
 ## Part V: Profiling and Parallel Processing
 

@@ -3,6 +3,7 @@ title: "DataSci 306 Final Project"
 author: "DataSci 306 Instructional Team"
 date: "`r Sys.Date()`"
 output: html_document
+runtime: shiny_prerendered
 ---
 
 ```{r setup, include=FALSE}
@@ -172,11 +173,17 @@ ggplot(title_basics, aes(x = runtimeMinutes, fill = titleType)) +
 
 Using results from the previous section, create a shiny application that allows users to interact with the with the IMDb data. The application should use both interactive graphs and at least 3 widgets.
 
+```{r app1, context='server'}
+
+```
+
 ### Application 2
 
 In the principals table, there is a `category` column. Use this column as a primary filter to allow users to then select specific job categories. After select the specific job categories, display information from another table.
 
-test change
+```{r app2, context='server'}
+
+```
 
 ## Extra Credit: 6 Degrees of Kevin Bacon
 

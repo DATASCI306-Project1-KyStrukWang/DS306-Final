@@ -40,13 +40,14 @@ title_ratings <- read_rds("data/title_ratings_sample.rda")
 ```
 
 ```{r}
-summary(name_basics)
-
-
-name_basics %>% summarise(unique_primaryName = n_distinct(primaryName))
+#name_basics
+summary(name_basics$birthYear)
+summary(name_basics$deathYear)
 
 name_basics$primaryProfession <- as.factor(name_basics$primaryProfession)
 summary(name_basics$primaryProfession)
+
+name_basics %>% summarise(unique_primaryName = n_distinct(primaryName))
 
 name_basics$numKnownForTitles <- sapply(str_split(name_basics$knownForTitles, ","), length)
 summary(as.factor(name_basics$numKnownForTitles))
@@ -83,6 +84,40 @@ ggplot(name_basics, aes(x = numKnownForTitles)) +
   geom_bar(fill = "green") +
   labs(title = "Number of Titles Known for Each Person", x = "Number of Titles", y = "Frequency")
 ```
+```{r}
+#title_basics
+summary(title_basics$startYear)
+summary(title_basics$endYear)
+summary(title_basics$runtimeMinutes)
+
+title_basics$titleType <- as.factor(title_basics$titleType)
+title_basics$genres <- as.factor(title_basics$genres)
+
+summary(title_basics$titleType)
+summary(title_basics$genres)
+
+title_basics %>%
+  group_by(titleType) %>%
+  summarise(
+    mean_runtime = mean(runtimeMinutes, na.rm = TRUE),
+    median_runtime = median(runtimeMinutes, na.rm = TRUE),
+    count = n()
+  )
+
+title_basics %>%
+  group_by(genres) %>%
+  summarise(
+    mean_runtime = mean(runtimeMinutes, na.rm = TRUE),
+    median_runtime = median(runtimeMinutes, na.rm = TRUE),
+    count = n()
+  ) %>%
+  arrange(desc(count))
+
+ggplot(title_basics, aes(x = runtimeMinutes, fill = titleType)) +
+  geom_histogram(bins = 50, position = "dodge") +
+  labs(title = "Distribution of Runtime Minutes by Title Type", x = "Runtime Minutes")
+```
+
 
 
 * For each of the 4 tables, perform basic exploratory data analysis. Report the following information:

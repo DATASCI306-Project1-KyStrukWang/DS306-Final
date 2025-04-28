@@ -84,6 +84,7 @@ ggplot(name_basics, aes(x = numKnownForTitles)) +
   geom_bar(fill = "green") +
   labs(title = "Number of Titles Known for Each Person", x = "Number of Titles", y = "Frequency")
 ```
+
 ```{r}
 #title_basics
 summary(title_basics$startYear)
@@ -96,15 +97,16 @@ title_basics$genres <- as.factor(title_basics$genres)
 summary(title_basics$titleType)
 summary(title_basics$genres)
 
-title_basics %>%
+runtime_by_type <- title_basics %>%
   group_by(titleType) %>%
   summarise(
     mean_runtime = mean(runtimeMinutes, na.rm = TRUE),
     median_runtime = median(runtimeMinutes, na.rm = TRUE),
     count = n()
   )
+runtime_by_type
 
-title_basics %>%
+runtime_by_genre <- title_basics %>%
   group_by(genres) %>%
   summarise(
     mean_runtime = mean(runtimeMinutes, na.rm = TRUE),
@@ -112,11 +114,111 @@ title_basics %>%
     count = n()
   ) %>%
   arrange(desc(count))
+runtime_by_genre
 
+num_diff_titles <- title_basics %>%
+  filter(primaryTitle != originalTitle) %>%
+  nrow()
+
+is_alliterative <- function(title) {
+  words <- unlist(str_split(tolower(title), "\\s+")) # Convert to lower case for uniformity
+  first_letters <- substr(words, 1, 1)
+  return(all(first_letters == first_letters[1]))
+}
+
+title_basics$is_alliterative <- sapply(title_basics$primaryTitle, is_alliterative)
+alliterative_count <- sum(title_basics$is_alliterative, na.rm = TRUE)
+
+#Plot: Distribution of RunTime Minutes by Title Type
 ggplot(title_basics, aes(x = runtimeMinutes, fill = titleType)) +
-  geom_histogram(bins = 50, position = "dodge") +
+  geom_histogram(bins = 50, position = "stack") +
   labs(title = "Distribution of Runtime Minutes by Title Type", x = "Runtime Minutes")
+
+#Plot: Conditional Distributions of Release Year 
+title_basics <- title_basics %>%
+  mutate(different_name = primaryTitle != originalTitle)
+
+ggplot(title_basics, aes(x = startYear, fill = different_name)) +
+  geom_histogram(binwidth = 1, position = "dodge") +
+  facet_wrap(~different_name) +
+  labs(title = "Distribution of Release Years for Titles with Different vs. Same Name", 
+       x = "Start Year", 
+       fill = "Different Name?")
+
+#Plot: As a Density Plot
+ggplot(title_basics, aes(x = startYear, fill = different_name, color = different_name)) +
+  geom_density(alpha = 0.4, adjust = 1.5) +
+  labs(title = "Density of Release Years for Titles with Different vs. Same Name",
+       x = "Start Year",
+       y = "Density",
+       fill = "Different Name?",
+       color = "Different Name?") +
+  scale_fill_manual(values = c("steelblue", "coral")) +
+  scale_color_manual(values = c("steelblue", "coral"))
 ```
+**Based on both the histogram and density plot shown, we observe that titles with a different primary and original title are mostly released after 1990, with a noticable peak in 2010. Titles with the same name are distributed more broadly across the years with a sharp increase after 1990. This trend suggests that renaming title, due to whatever reason, has become a more common practice in modern entertainment.**
+
+```{r}
+#title_principals
+summary(title_principals)
+
+summary(title_principals$ordering)
+
+title_principals$category <- as.factor(title_principals$category)
+title_principals$job <- as.factor(title_principals$job)
+
+summary(title_principals$category)
+summary(title_principals$job)
+
+title_principals %>%
+  count(category) %>%
+  arrange(desc(n))
+
+#Plot: Count of Principals by Category
+ggplot(title_principals, aes(x = category)) +
+  geom_bar(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Principals by Category", x = "Category", y = "Count") +
+  theme_minimal()
+```
+```{r}
+summary(title_ratings)
+summary(title_ratings$averageRating)
+summary(title_ratings$numVotes)
+
+title_ratings$ratingCategory <- cut(
+  title_ratings$averageRating,
+  breaks = c(0, 5, 8, 10),
+  labels = c("Low", "Medium", "High")
+)
+table(title_ratings$ratingCategory)
+
+avg_votes_by_rating <- title_ratings %>%
+  group_by(ratingCategory) %>%
+  summarise(mean_votes = mean(numVotes, na.rm = TRUE), .groups = 'drop')
+
+avg_votes_by_rating
+
+# Plot: Distribution of Average Ratings
+ggplot(title_ratings, aes(x = averageRating, fill = ratingCategory)) +
+  geom_histogram(bins = 30, alpha = 0.6) +
+  labs(title = "Distribution of Average Ratings", x = "Average Rating") +
+  theme_minimal()
+
+# Plot: Average number of votes by rating category
+ggplot(avg_votes_by_rating, aes(x = ratingCategory, y = mean_votes, fill = ratingCategory)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Average Number of Votes by Rating Category", x = "Rating Category", y = "Average Number of Votes")
+
+#Plot: A scatterplot of averageRating vs numVotes
+ggplot(title_ratings, aes(x = averageRating, y = numVotes)) +
+  geom_point(alpha = 0.5) +
+  scale_y_log10() +
+  labs(title = "Votes vs. Average Rating",
+       x = "Average Rating",
+       y = "Number of Votes (log scale)")
+```
+
 
 
 
@@ -139,6 +241,8 @@ ggplot(title_basics, aes(x = runtimeMinutes, fill = titleType)) +
 * How many titles use alliteration (i.e., all words in the title start with the same letter)?
 
 **There are 4331 actors with the first name "Tom", "Thomas", "Thom" or "Tomas"**
+**There are 7244 titles that are known for name that is different than the original release name.**
+**There are 16549 titles that use alliteration.**
 
 ## Part III: Pivoting
 

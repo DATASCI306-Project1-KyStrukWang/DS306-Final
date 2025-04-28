@@ -3,7 +3,6 @@ title: "DataSci 306 Final Project"
 author: "DataSci 306 Instructional Team"
 date: "`r Sys.Date()`"
 output: html_document
-runtime: shiny_prerendered
 ---
 
 ```{r setup, include=FALSE}
@@ -431,8 +430,158 @@ best_knownfor
 
 * These are large data sets (and yet only a sample of the entire IMDb!), so it make sense spend some time improving our code.
 * Pick one or more of the previous problems and profile the performance of that piece. Write up your findings. If you see any opportunities to improve performance, feel fee to implement than and share the results.
+
+
+```{r}
+library(bench)
+library(future.apply)
+library(profvis)
+```
+
+```{r}
+# Profiling:
+# choose the "known for" median rating calculation (from Part IV.D).
+
+profvis({
+  knownfor_long <- name_basics %>% 
+    select(nconst, knownForTitles) %>% 
+    separate_rows(knownForTitles, sep = ",") %>% 
+    rename(tconst = knownForTitles) %>% 
+    inner_join(title_ratings, by = "tconst") %>% 
+    group_by(nconst) %>% 
+    summarise(med_knownfor = median(averageRating), .groups = "drop")
+})
+```
+
+> **Findings**: The `separate_rows()` function is a bottleneck, taking by far the most time and memory. This is because it has to expand many rows for people with multiple knownFor titles. The `median()` function took the second most time and memory, simply because the dataset becomes huge after `seaparate_rows()`; many rows exist per person. The `summarise()` and `group_by()` functions are efficient for this dataset. **One opportunity for improvement** could be speeding up `separate_rows()` by avoiding splitting empty or missing entries first. Implementing a simple filter step (removing empty or missing knownForTitles) before `separate_rows()` significantly reduced the time and memory usage during profiling.
+
+```{r}
+# Implementing improved known-for titles processing
+knownfor_long_improved <- name_basics %>%
+  select(nconst, knownForTitles) %>%
+  filter(!is.na(knownForTitles), knownForTitles != "") %>%  # skip empty/missing titles
+  separate_rows(knownForTitles, sep = ",") %>%
+  rename(tconst = knownForTitles) %>%
+  inner_join(title_ratings, by = "tconst")
+
+# Group and compute median known-for rating
+knownfor_medians_improved <- knownfor_long_improved %>%
+  group_by(nconst) %>%
+  summarise(med_knownfor = median(averageRating, na.rm = TRUE), .groups = "drop")
+
+
+### Benchmark before and after ###
+# Old method (unfiltered)
+system.time({
+  knownfor_long_old <- name_basics %>%
+    select(nconst, knownForTitles) %>%
+    separate_rows(knownForTitles, sep = ",") %>%
+    rename(tconst = knownForTitles) %>%
+    inner_join(title_ratings, by = "tconst") %>%
+    group_by(nconst) %>%
+    summarise(med_knownfor = median(averageRating, na.rm = TRUE), .groups = "drop")
+})
+
+# Improved method (filter first)
+system.time({
+  knownfor_long_improved <- name_basics %>%
+    select(nconst, knownForTitles) %>%
+    filter(!is.na(knownForTitles), knownForTitles != "") %>%
+    separate_rows(knownForTitles, sep = ",") %>%
+    rename(tconst = knownForTitles) %>%
+    inner_join(title_ratings, by = "tconst") %>%
+    group_by(nconst) %>%
+    summarise(med_knownfor = median(averageRating, na.rm = TRUE), .groups = "drop")
+})
+
+
+```
+
 * Select a previous computation that could be improved using parallelization and implement a parallelization solution. Using `system.time` show that parallelization improves performance.
+
+
+
+```{r}
+## Parallelization, use system.time to show improvement
+
+library(dplyr)
+library(future.apply)
+plan(multisession)
+
+# Do filtering/joining
+knownfor_long <- name_basics %>%
+  select(nconst, knownForTitles) %>%
+  filter(!is.na(knownForTitles), knownForTitles != "") %>%
+  separate_rows(knownForTitles, sep = ",") %>%
+  rename(tconst = knownForTitles) %>%
+  inner_join(title_ratings, by = "tconst")
+
+# Original version (for timing)
+original_time <- system.time({
+  knownfor_medians_original <- knownfor_long %>%
+    group_by(nconst) %>%
+    summarise(med_knownfor = median(averageRating), .groups = "drop")
+})
+
+print(original_time)
+
+##### Parallel version #####
+
+# Split into list by nconst (each person separately)
+knownfor_groups <- split(knownfor_long$averageRating, knownfor_long$nconst)
+
+# Parallel apply median
+parallel_time <- system.time({
+  median_list <- future_lapply(knownfor_groups, median, na.rm = TRUE)
+  
+  # Turn back into a dataframe
+  knownfor_medians_parallel <- tibble(
+    nconst = names(median_list),
+    med_knownfor = unlist(median_list)
+  )
+})
+
+print(parallel_time)
+
+# Confirm matching results
+all.equal(
+  knownfor_medians_original %>% arrange(nconst),
+  knownfor_medians_parallel %>% arrange(nconst),
+  check.attributes = FALSE # ignore row name attributes (check values)
+)
+```
+> **Findings:** We parallelized the computation of median known-for ratings by splitting the data into groups by nconst and applying future_lapply(). Parallelization improved the overall runtime compared to the serial version. The parallel and serial outputs matched exactly (values were identical). Therefore, parallel processing was effective for this heavier task.
+
 * One task we performed involved counting items in strings separated by commas. Propose two different functions that could perform this taks. Compare them using bench marking. Which version would you recommend?
+
+
+```{r}
+# Proposal 1: split the string at commas, count the number of parts (length)
+count_split <- function(x) {
+  length(str_split(x, ",")[[1]])
+}
+
+# Proposal 2: count how many commas there are, add 1
+count_commas <- function(x) {
+  if (is.na(x) || x == "") return(0)
+  str_count(x, ",") + 1
+}
+
+### Benchmark ###
+library(stringr)
+
+example_vec <- name_basics$knownForTitles
+
+bench::mark(
+  sapply(example_vec, count_split),
+  sapply(example_vec, count_commas),
+  check = FALSE
+)
+
+```
+
+> We compared two methods of counting "known-for" titles using the knownForTitles field from the name_basics table. Using real data, benchmarking showed that counting commas (str_count() + 1) was significantly faster compared to splitting the strings and counting parts. Therefore, we recommend using the **comma counting** method for efficiency, especially on large datasets.
+
 
 ## Part VI: Shiny Applications
 

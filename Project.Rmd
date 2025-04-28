@@ -693,16 +693,20 @@ bench::mark(
 
 Using results from the previous section, create a shiny application that allows users to interact with the with the IMDb data. The application should use both interactive graphs and at least 3 widgets.
 
+*partVI_app1.R**
 
 ### Application 2
 
 In the principals table, there is a `category` column. Use this column as a primary filter to allow users to then select specific job categories. After select the specific job categories, display information from another table.
 
+*partVI_app2.R**
 
 ## Extra Credit: 6 Degrees of Kevin Bacon
 
 Create an app to allow users to play [Six Degrees of Kevin Bacon](https://en.wikipedia.org/wiki/Six_Degrees_of_Kevin_Bacon#:~:text=Six%20Degrees%20of%20Kevin%20Bacon%20or%20Bacon's%20Law%20is%20a,ultimately%20leads%20to%20prolific%20American).
 
 Create a Shiny application where a person can type the primary title of movie or TV show. Then have app show all the people who had a role in the show. Let the user select a person in that cast and show all other people who have been in a title with that person. Repeat up to 6 times. If "Kevin Bacon" (`nconst == 'nm0000102'`) ever appears in the list, let the player know they have won! If they click more than 6 times, let them know they have lost.
+
+*6dkevinb.R**
 
 
